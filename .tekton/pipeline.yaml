@@ -1,0 +1,62 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: app-pipeline
+spec:
+  workspaces:
+    - name: shared-workspace
+  resources:
+    - name: source-url
+      type: git
+    - name: source-image
+      type: image
+  params:
+    - name: APP_NAME
+      description: The name of the application
+      default: 'spring-petclinic'
+    - name: PROJECT
+      description: The project where you deploy the app
+      default: 'default'
+    - name: GIT_URL
+      description: The URL for the Git repository
+      default: 'https://github.com/carlosonunez-redhat/spring-petclinic'
+    - name: GIT_REF
+      description: The branch or commit SHA to reference.
+      default: main
+    - name: IMAGE_NAME
+      description: The image to use when creating the app.
+      default: registry.redhat.io/ubi8/openjdk-17
+  tasks:
+    - name: fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+      params:
+        - name: URL
+          value: $(params.GIT_URL)
+        - name: REVISION
+          value: $(params.GIT_REF)
+    - name: update-app
+      runAfter:
+        - fetch-repository
+      taskRef:
+        name: update-app
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+      params:
+        - name: IMAGE_NAME
+          value: $(params.IMAGE_NAME)
+        - name: PROJECT
+          value: $(params.PROJECT)
+        - name: APP_NAME
+          value: $(params.APP_NAME)

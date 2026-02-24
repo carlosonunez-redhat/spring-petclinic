@@ -1,0 +1,83 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: github-push-listener-petclinic
+  namespace: default
+spec:
+  namespaceSelector: {}
+  resources: {}
+  serviceAccountName: pipeline
+  triggers:
+    - bindings:
+        - kind: ClusterTriggerBinding
+          ref: github-push
+      template:
+        ref: github-push-tt
+      interceptors:
+        - ref:
+            name: "github"
+          params:
+            - name: "secretRef"
+              value:
+                secretName: github-secret
+                secretKey: secretToken
+            - name: "eventTypes"
+              value: ["push"]
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: github-push-tt-petclinic
+  namespace: default
+spec:
+  params:
+    - name: git-revision
+    - name: git-commit-message
+    - name: git-repo-url
+    - name: git-repo-clone-url
+    - name: git-repo-name
+    - name: content-type
+    - name: pusher-name
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        annotations:
+          pipeline.openshift.io/started-by: 'kube:admin'
+        generateName: app-pipeline-
+        labels:
+          tekton.dev/pipeline: app-pipeline
+        namespace: default
+      spec:
+        params:
+          - name: APP_NAME
+            value: spring-petclinic
+          - name: PROJECT
+            value: default
+          - name: GIT_URL
+            value: 'https://github.com/carlosonunez-redhat/spring-petclinic'
+          - name: GIT_REF
+            value: main
+          - name: IMAGE_NAME
+            value: registry.redhat.io/ubi8/openjdk-17
+        pipelineRef:
+          name: app-pipeline
+        status: null
+        workspaces:
+          - emptyDir: {}
+            name: shared-workspace
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: github-push-listener-petclinic
+  namespace: default
+spec:
+  host: github-push-listener-petclinic.$DOMAIN_NAME
+  port:
+    targetPort: http-listener
+  to:
+    kind: Service
+    name: el-github-push-listener-petclinic
+    weight: 100
+  wildcardPolicy: None

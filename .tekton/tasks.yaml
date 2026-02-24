@@ -1,0 +1,51 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: update-app
+spec:
+  workspaces:
+    - name: source
+  params:
+    - name: IMAGE_NAME
+      description: Name of the image to use for the app (if new)
+      type: string
+    - name: PROJECT
+      description: Project or namespace into which the app will be deployed.
+      type: string
+    - name: APP_NAME
+  steps:
+    - name: create-app
+      image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+      command: ["/bin/bash", "-c"]
+      workingDir: /workspace/source
+      args:
+        - |-
+          #!/usr/bin/env bash
+          set -eux
+          oc project $(inputs.params.PROJECT)
+          if test -n $(oc get deployment -l app=$(inputs.params.APP_NAME) -o name)
+          then oc start-build $(inputs.params.APP_NAME)
+          else oc new-app . --image=$(inputs.params.IMAGE_NAME)
+          fi
+    - name: wait-for-build
+      image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+      command: ["/bin/bash", "-c"]
+      workingDir: /workspace/source
+      args:
+        - |-
+          set -eux
+          oc project $(inputs.params.PROJECT)
+          latest=$(oc get build -o name | tail -1)
+          oc get build -o name |
+            tail -1 |
+            xargs oc wait --for=jsonpath='{.status.phase}'=Complete --timeout=180s
+    - name: expose-app
+      image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+      command: ["/bin/bash", "-c"]
+      workingDir: /workspace/source
+      args:
+        - |-
+          set -eux
+          oc project $(inputs.params.PROJECT)
+          test -n $(oc get route -o name $(inputs.params.APP_NAME)) && exit 0
+          oc expose service $(inputs.params.APP_NAME)
