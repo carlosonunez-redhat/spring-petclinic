@@ -12,7 +12,7 @@ spec:
         - kind: ClusterTriggerBinding
           ref: github-push
       template:
-        ref: github-push-tt
+        ref: github-push-tt-petclinic
       interceptors:
         - ref:
             name: "github"
